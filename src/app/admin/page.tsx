@@ -1,58 +1,54 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { MenuBuilder } from '@/components/admin/menu-builder';
-import { MenuItem } from '@/components/admin/menu-builder/types';
+import { MenuBuilder } from '@/components/admin/MenuBuilder';
 import { toast } from 'sonner';
 
 export default function AdminPage() {
-  const [menuData, setMenuData] = useState<MenuItem[]>([]);
+  const [menuData, setMenuData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 1. Загрузка меню из Vercel KV при открытии страницы
   useEffect(() => {
     async function loadData() {
       try {
         const res = await fetch('/api/cms');
         const data = await res.json();
-        setMenuData(data.menu || []);
-      } catch (error) {
-        console.error('Ошибка загрузки:', error);
-        toast.error('Не удалось загрузить меню');
-      } finally {
-        setLoading(false);
-      }
+        // ВАЖНО: Приводим всё к строкам сразу при загрузке
+        const prepared = (data.menu || []).map((item: any) => ({
+          ...item,
+          id: String(item.id),
+          parent: String(item.parent || "0"),
+          droppable: true
+        }));
+        setMenuData(prepared);
+      } catch (e) { toast.error('Ошибка загрузки'); }
+      finally { setLoading(false); }
     }
     loadData();
   }, []);
 
-  // 2. Функция сохранения (тот самый POST запрос)
-  const handleSave = async (updatedMenu: MenuItem[]) => {
+  const handleSave = async (updatedMenu: any[]) => {
     try {
+      // ПРОВЕРКА: Если в массиве всё еще parent: "0", значит дерево не поменялось
       const res = await fetch('/api/cms', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'save_menu',
-          payload: { menu: updatedMenu }
+          payload: { menu: updatedMenu } // Отправляем как есть
         })
       });
 
-      if (res.ok) {
-        toast.success('Меню сохранено в облако!');
-      } else {
-        toast.error('Ошибка сервера при сохранении');
-      }
-    } catch (error) {
-      toast.error('Ошибка сети');
-    }
+      if (res.ok) toast.success('Сохранено!');
+      else toast.error('Ошибка сохранения');
+    } catch (e) { toast.error('Ошибка сети'); }
   };
 
-  if (loading) return <div className="p-10 text-center">Загрузка конструктора...</div>;
+  if (loading) return <div className="p-10 text-center">Загрузка...</div>;
 
   return (
-    <div className="container mx-auto py-10">
-      <h1 className="text-2xl font-bold mb-6">Админка: Управление меню</h1>
+    <div className="container mx-auto py-10 px-4 max-w-2xl">
+      <h1 className="text-2xl font-bold mb-6">Управление меню</h1>
       <MenuBuilder initialData={menuData} onSave={handleSave} />
     </div>
   );

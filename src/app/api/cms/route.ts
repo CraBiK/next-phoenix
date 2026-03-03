@@ -1,25 +1,36 @@
-import { kv } from '@vercel/kv';
+import { Redis } from '@upstash/redis';
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
 
 export async function GET() {
-  const menu = await kv.get('site_menu');
-  return NextResponse.json({ menu: menu || [] });
+  try {
+    const menu = await redis.get('site_menu');
+    return NextResponse.json({ menu: menu || [] });
+  } catch (error) {
+    return NextResponse.json({ menu: [] });
+  }
 }
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    console.log('Данные получены сервером:', body); // Увидишь это в терминале VS Code
+    const { action, payload } = await request.json();
 
-    if (body.action === 'save_menu') {
-      await kv.set('site_menu', body.payload.menu);
-      console.log('Данные успешно записаны в Redis!');
+    if (action === 'save_menu') {
+      await redis.set('site_menu', payload.menu);
+      
+      // Очищаем кэш, чтобы Navbar на всех страницах обновился сразу
+      revalidatePath('/', 'layout'); 
+      
       return NextResponse.json({ success: true });
     }
-    
-    return NextResponse.json({ error: 'Неверное действие' }, { status: 400 });
-  } catch (error) {
-    console.error('Ошибка API:', error);
-    return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });
+
+    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
